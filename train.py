@@ -4,8 +4,7 @@ from pathlib import Path
 from keras.callbacks import LearningRateScheduler, ModelCheckpoint, TensorBoard
 from keras.optimizers import Adam
 from model import get_model, PSNR, L0Loss, UpdateAnnealingParameter
-from generator import TrainGenerator, ValGenerator
-# from noise_model import get_noise_model
+from generator import TrainGenerator, TestGenerator
 from time import strftime, gmtime
 
 
@@ -31,13 +30,13 @@ def get_args():
                         help="train image dir")
     parser.add_argument("--test_dir", type=str, required=True,
                         help="test image dir")
-    parser.add_argument("--image_size", type=int, default=64,
+    parser.add_argument("--image_size", type=int, default=512,
                         help="training patch size")
-    parser.add_argument("--batch_size", type=int, default=16,
+    parser.add_argument("--batch_size", type=int, default=4,
                         help="batch size")
     parser.add_argument("--nb_epochs", type=int, default=60,
                         help="number of epochs")
-    parser.add_argument("--lr", type=float, default=0.01,
+    parser.add_argument("--lr", type=float, default=0.0001,
                         help="learning rate")
     parser.add_argument("--loss", type=str, default="mse",
                         help="loss; mse', 'mae', or 'l0' is expected")
@@ -45,14 +44,8 @@ def get_args():
                         help="weight file for restart")
     parser.add_argument("--output_path", type=str, default="weights",
                         help="weights dir")
-    parser.add_argument("--source_noise_model", type=str, default="gaussian,0,50",
-                        help="noise model for source images")
-    parser.add_argument("--target_noise_model", type=str, default="gaussian,0,50",
-                        help="noise model for target images")
-    parser.add_argument("--val_noise_model", type=str, default="gaussian,25,25",
-                        help="noise model for validation source images")
-    parser.add_argument("--model", type=str, default="unet",
-                        help="model architecture ('srresnet' or 'unet')")
+    parser.add_argument("--model", type=str, default="n2n_unet",
+                        help="model architecture ('n2n_unet' or 'unet')")
     args = parser.parse_args()
 
     return args
@@ -84,18 +77,8 @@ def main():
 
     model.compile(optimizer=opt, loss=loss_type, metrics=[PSNR])
 
-    # We don't need noise generators for now
-    source_noise_model = None
-    target_noise_model = None
-    val_noise_model = None
-
-    # source_noise_model = get_noise_model(args.source_noise_model)
-    # target_noise_model = get_noise_model(args.target_noise_model)
-    # val_noise_model = get_noise_model(args.val_noise_model)
-
-    generator = TrainGenerator(image_dir, source_noise_model, target_noise_model, batch_size=batch_size,
-                                    image_size=image_size)
-    val_generator = ValGenerator(test_dir, val_noise_model)
+    train_generator = TrainGenerator(image_dir, batch_size=batch_size, image_size=image_size)
+    test_generator = TestGenerator(test_dir)
 
     output_path.mkdir(parents=True, exist_ok=True)
     # callbacks.append(LearningRateScheduler(schedule=Schedule(nb_epochs, lr)))
@@ -114,9 +97,9 @@ def main():
                               )
     callbacks.append(tensorboard)
 
-    hist = model.fit_generator(generator=generator,
+    hist = model.fit_generator(generator=train_generator,
                                epochs=nb_epochs,
-                               validation_data=val_generator,
+                               validation_data=test_generator,
                                verbose=1,
                                callbacks=callbacks)
 
