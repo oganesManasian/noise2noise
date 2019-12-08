@@ -1,11 +1,12 @@
 import argparse
 import numpy as np
 from pathlib import Path
-from keras.callbacks import LearningRateScheduler, ModelCheckpoint
+from keras.callbacks import LearningRateScheduler, ModelCheckpoint, TensorBoard
 from keras.optimizers import Adam
 from model import get_model, PSNR, L0Loss, UpdateAnnealingParameter
-from generator import NoisyImageGenerator, ValGenerator
-from noise_model import get_noise_model
+from generator import TrainGenerator, ValGenerator
+# from noise_model import get_noise_model
+from time import strftime, gmtime
 
 
 class Schedule:
@@ -38,21 +39,19 @@ def get_args():
                         help="number of epochs")
     parser.add_argument("--lr", type=float, default=0.01,
                         help="learning rate")
-    parser.add_argument("--steps", type=int, default=1000,
-                        help="steps per epoch")
     parser.add_argument("--loss", type=str, default="mse",
                         help="loss; mse', 'mae', or 'l0' is expected")
     parser.add_argument("--weight", type=str, default=None,
                         help="weight file for restart")
-    parser.add_argument("--output_path", type=str, default="checkpoints",
-                        help="checkpoint dir")
+    parser.add_argument("--output_path", type=str, default="weights",
+                        help="weights dir")
     parser.add_argument("--source_noise_model", type=str, default="gaussian,0,50",
                         help="noise model for source images")
     parser.add_argument("--target_noise_model", type=str, default="gaussian,0,50",
                         help="noise model for target images")
     parser.add_argument("--val_noise_model", type=str, default="gaussian,25,25",
                         help="noise model for validation source images")
-    parser.add_argument("--model", type=str, default="srresnet",
+    parser.add_argument("--model", type=str, default="unet",
                         help="model architecture ('srresnet' or 'unet')")
     args = parser.parse_args()
 
@@ -67,13 +66,13 @@ def main():
     batch_size = args.batch_size
     nb_epochs = args.nb_epochs
     lr = args.lr
-    steps = args.steps
     loss_type = args.loss
     output_path = Path(__file__).resolve().parent.joinpath(args.output_path)
     model = get_model(args.model)
 
     if args.weight is not None:
         model.load_weights(args.weight)
+        print("Loaded weights")
 
     opt = Adam(lr=lr)
     callbacks = []
@@ -84,22 +83,38 @@ def main():
         loss_type = l0()
 
     model.compile(optimizer=opt, loss=loss_type, metrics=[PSNR])
-    source_noise_model = get_noise_model(args.source_noise_model)
-    target_noise_model = get_noise_model(args.target_noise_model)
-    val_noise_model = get_noise_model(args.val_noise_model)
-    generator = NoisyImageGenerator(image_dir, source_noise_model, target_noise_model, batch_size=batch_size,
+
+    # We don't need noise generators for now
+    source_noise_model = None
+    target_noise_model = None
+    val_noise_model = None
+
+    # source_noise_model = get_noise_model(args.source_noise_model)
+    # target_noise_model = get_noise_model(args.target_noise_model)
+    # val_noise_model = get_noise_model(args.val_noise_model)
+
+    generator = TrainGenerator(image_dir, source_noise_model, target_noise_model, batch_size=batch_size,
                                     image_size=image_size)
     val_generator = ValGenerator(test_dir, val_noise_model)
+
     output_path.mkdir(parents=True, exist_ok=True)
-    callbacks.append(LearningRateScheduler(schedule=Schedule(nb_epochs, lr)))
-    callbacks.append(ModelCheckpoint(str(output_path) + "/weights.{epoch:03d}-{val_loss:.3f}-{val_PSNR:.5f}.hdf5",
-                                     monitor="val_PSNR",
+    # callbacks.append(LearningRateScheduler(schedule=Schedule(nb_epochs, lr)))
+    callbacks.append(ModelCheckpoint(str(output_path) + "/weights.{epoch:03d}-{val_loss:.3f}.hdf5",
+                                     monitor="val_loss",
                                      verbose=1,
-                                     mode="max",
-                                     save_best_only=True))
+                                     period=10)
+                                     # mode="min",
+                                     # save_best_only=True)
+                     )
+
+    logs_filename = "logs {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+    tensorboard = TensorBoard(update_freq="epoch",
+                              write_images=True,
+                              log_dir='logs/{}'.format(logs_filename)
+                              )
+    callbacks.append(tensorboard)
 
     hist = model.fit_generator(generator=generator,
-                               steps_per_epoch=steps,
                                epochs=nb_epochs,
                                validation_data=val_generator,
                                verbose=1,

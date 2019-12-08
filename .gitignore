@@ -102,3 +102,6 @@ ENV/
 
 .DS_Store
 
+*.jpg
+*.hdf5
+*.nd2

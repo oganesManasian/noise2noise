@@ -1,5 +1,7 @@
 from keras.models import Model
-from keras.layers import Input, Add, PReLU, Conv2DTranspose, Concatenate, MaxPooling2D, UpSampling2D, Dropout
+from keras.layers import Input, Add, PReLU, LeakyReLU, Conv2DTranspose, \
+    concatenate, Concatenate, MaxPooling2D, UpSampling2D, Dropout
+
 from keras.layers.convolutional import Conv2D
 from keras.layers.normalization import BatchNormalization
 from keras.callbacks import Callback
@@ -15,6 +17,7 @@ class L0Loss:
         def calc_loss(y_true, y_pred):
             loss = K.pow(K.abs(y_true - y_pred) + 1e-8, self.gamma)
             return loss
+
         return calc_loss
 
 
@@ -49,9 +52,10 @@ def get_model(model_name="srresnet"):
     if model_name == "srresnet":
         return get_srresnet_model()
     elif model_name == "unet":
-        return get_unet_model(out_ch=3)
+        return get_unet_paper()
+        # return get_unet_model()
     else:
-        raise ValueError("model_name should be 'srresnet'or 'unet'")
+        raise ValueError("model_name should be 'srresnet' or 'unet'")
 
 
 # SRResNet
@@ -84,8 +88,10 @@ def get_srresnet_model(input_channel_num=3, feature_dim=64, resunit_num=16):
 
 
 # UNet: code from https://github.com/pietz/unet-keras
+# For images with one color channel
+# def get_unet_model(input_channel_num=1, out_ch=1, start_ch=64, depth=4, inc_rate=2., activation='relu',
 def get_unet_model(input_channel_num=3, out_ch=3, start_ch=64, depth=4, inc_rate=2., activation='relu',
-         dropout=0.5, batchnorm=False, maxpool=True, upconv=True, residual=False):
+                   dropout=0.5, batchnorm=False, maxpool=True, upconv=True, residual=False):
     def _conv_block(m, dim, acti, bn, res, do=0):
         n = Conv2D(dim, 3, activation=acti, padding='same')(m)
         n = BatchNormalization()(n) if bn else n
@@ -116,6 +122,83 @@ def get_unet_model(input_channel_num=3, out_ch=3, start_ch=64, depth=4, inc_rate
     o = _level_block(i, start_ch, depth, inc_rate, activation, dropout, batchnorm, maxpool, upconv, residual)
     o = Conv2D(out_ch, 1)(o)
     model = Model(inputs=i, outputs=o)
+
+    return model
+
+# For images with one color channel
+def get_unet_paper(input_channels=1, output_channels=1):
+# def get_unet_paper(input_channels=3, output_channels=3):
+
+    def conv_with_leaky_relu(filters, kernel_size, padding, alpha, input):
+        conv = Conv2D(filters, kernel_size, padding=padding)(input)
+        return LeakyReLU(alpha=alpha)(conv)
+
+    def deconv_with_leaky_relu(filters, kernel_size, padding, alpha, input):
+        dec_conv = Conv2D(filters, kernel_size, padding=padding)(input)
+        return LeakyReLU(alpha=alpha)(dec_conv)
+
+    inputs = Input((None, None, input_channels))
+
+    # Contracting path
+    enc_conv0 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=inputs)
+    enc_conv1 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=enc_conv0)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(enc_conv1)
+
+    enc_conv2 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=pool1)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(enc_conv2)
+
+    enc_conv3 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=pool2)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(enc_conv3)
+
+    enc_conv4 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=pool3)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(enc_conv4)
+
+    enc_conv5 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=pool4)
+    pool5 = MaxPooling2D(pool_size=(2, 2))(enc_conv5)
+
+    enc_conv6 = conv_with_leaky_relu(filters=48, kernel_size=3, padding='same', alpha=0.1, input=pool5)
+
+    # Expansive path
+    upsample5 = Conv2DTranspose(48, 3, strides=2, padding='same')(enc_conv6)
+
+    concat5 = concatenate([upsample5, pool4])
+
+    dec_conv5a = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=concat5)
+    dec_conv5b = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=dec_conv5a)
+
+    upsample4 = Conv2DTranspose(96, 3, strides=2, padding='same')(dec_conv5b)
+
+    concat4 = concatenate([upsample4, pool3])
+
+    dec_conv4a = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=concat4)
+    dec_conv4b = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=dec_conv4a)
+
+    upsample3 = Conv2DTranspose(96, 3, strides=2, padding='same')(dec_conv4b)
+
+    concat3 = concatenate([upsample3, pool2])
+
+    dec_conv3a = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=concat3)
+    dec_conv3b = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=dec_conv3a)
+
+    upsample2 = Conv2DTranspose(96, 3, strides=2, padding='same')(dec_conv3b)
+
+    concat2 = concatenate([upsample2, pool1])
+
+    dec_conv2a = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=concat2)
+    dec_conv2b = deconv_with_leaky_relu(filters=96, kernel_size=3, padding='same', alpha=0.1, input=dec_conv2a)
+
+    upsample1 = Conv2DTranspose(96, 3, strides=2, padding='same')(dec_conv2b)
+
+    concat1 = concatenate([upsample1, inputs])
+    concat1 = Conv2D(96 + input_channels, 3, padding='same')(concat1)
+    concat1 = LeakyReLU(alpha=0.1)(concat1)
+
+    dec_conv1a = deconv_with_leaky_relu(filters=64, kernel_size=3, padding='same', alpha=0.1, input=concat1)
+    dec_conv1b = deconv_with_leaky_relu(filters=32, kernel_size=3, padding='same', alpha=0.1, input=dec_conv1a)
+
+    dec_conv1c = Conv2D(output_channels, 3, activation='linear', padding='same')(dec_conv1b)
+
+    model = Model(inputs=inputs, outputs=dec_conv1c)
 
     return model
 

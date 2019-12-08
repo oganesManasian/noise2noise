@@ -3,9 +3,12 @@ import random
 import numpy as np
 import cv2
 from keras.utils import Sequence
+from keras_preprocessing.image import ImageDataGenerator
+
+train_generator = ImageDataGenerator
 
 
-class NoisyImageGenerator(Sequence):
+class TrainGenerator(Sequence):
     def __init__(self, image_dir, source_noise_model, target_noise_model, batch_size=32, image_size=64):
         image_suffixes = (".jpeg", ".jpg", ".png", ".bmp")
         self.image_paths = [p for p in Path(image_dir).glob("**/*") if p.suffix.lower() in image_suffixes]
@@ -19,32 +22,29 @@ class NoisyImageGenerator(Sequence):
             raise ValueError("image dir '{}' does not include any image".format(image_dir))
 
     def __len__(self):
-        return self.image_num // self.batch_size
+        return self.image_num // (2 * self.batch_size)
 
     def __getitem__(self, idx):
         batch_size = self.batch_size
         image_size = self.image_size
-        x = np.zeros((batch_size, image_size, image_size, 3), dtype=np.uint8)
-        y = np.zeros((batch_size, image_size, image_size, 3), dtype=np.uint8)
-        sample_id = 0
 
-        while True:
-            image_path = random.choice(self.image_paths)
-            image = cv2.imread(str(image_path))
-            h, w, _ = image.shape
+        # x = np.zeros((batch_size, image_size, image_size, 3), dtype=np.uint8)
+        # y = np.zeros((batch_size, image_size, image_size, 3), dtype=np.uint8)
+        # For images with one color channel
+        x = np.zeros((batch_size, image_size, image_size, 1), dtype=np.uint8)
+        y = np.zeros((batch_size, image_size, image_size, 1), dtype=np.uint8)
 
-            if h >= image_size and w >= image_size:
-                h, w, _ = image.shape
-                i = np.random.randint(h - image_size + 1)
-                j = np.random.randint(w - image_size + 1)
-                clean_patch = image[i:i + image_size, j:j + image_size]
-                x[sample_id] = self.source_noise_model(clean_patch)
-                y[sample_id] = self.target_noise_model(clean_patch)
+        last_img_used_ind = 2 * batch_size * idx
 
-                sample_id += 1
+        for sample_ind in range(batch_size):
+            image_ind = last_img_used_ind + 2 * sample_ind
+            # x[sample_ind] = cv2.imread(str(self.image_paths[image_ind]))
+            # y[sample_ind] = cv2.imread(str(self.image_paths[image_ind + 1]))
+            # For images with one color channel
+            x[sample_ind] = np.expand_dims(cv2.imread(str(self.image_paths[image_ind]), cv2.IMREAD_GRAYSCALE), axis=2)
+            y[sample_ind] = np.expand_dims(cv2.imread(str(self.image_paths[image_ind + 1]), cv2.IMREAD_GRAYSCALE), axis=2)
 
-                if sample_id == batch_size:
-                    return x, y
+        return x, y
 
 
 class ValGenerator(Sequence):
@@ -57,15 +57,21 @@ class ValGenerator(Sequence):
         if self.image_num == 0:
             raise ValueError("image dir '{}' does not include any image".format(image_dir))
 
-        for image_path in image_paths:
-            y = cv2.imread(str(image_path))
-            h, w, _ = y.shape
-            y = y[:(h // 16) * 16, :(w // 16) * 16]  # for stride (maximum 16)
-            x = val_noise_model(y)
-            self.data.append([np.expand_dims(x, axis=0), np.expand_dims(y, axis=0)])
+        n_pairs = self.image_num // 2
+        for pair_ind in range(n_pairs):
+            image_ind = pair_ind * 2
+            # x = cv2.imread(str(image_paths[image_ind]))
+            # y = cv2.imread(str(image_paths[image_ind + 1]))
+            # For images with one color channel
+            x = np.expand_dims(cv2.imread(str(image_paths[image_ind]), cv2.IMREAD_GRAYSCALE), axis=2)
+            y = np.expand_dims(cv2.imread(str(image_paths[image_ind + 1]), cv2.IMREAD_GRAYSCALE), axis=2)
+
+            # expand_dims for creating the 4th dimension
+            self.data.append((np.expand_dims(x, axis=0), np.expand_dims(y, axis=0)))
 
     def __len__(self):
-        return self.image_num
+        return self.image_num // 2
 
     def __getitem__(self, idx):
         return self.data[idx]
+
