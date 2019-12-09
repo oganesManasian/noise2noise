@@ -26,7 +26,7 @@ class Schedule:
 def get_args():
     parser = argparse.ArgumentParser(description="train noise2noise model",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--image_dir", type=str, required=True,
+    parser.add_argument("--train_dir", type=str, required=True,
                         help="train image dir")
     parser.add_argument("--test_dir", type=str, required=True,
                         help="test image dir")
@@ -53,7 +53,7 @@ def get_args():
 
 def main():
     args = get_args()
-    image_dir = args.image_dir
+    train_dir = args.train_dir
     test_dir = args.test_dir
     image_size = args.image_size
     batch_size = args.batch_size
@@ -77,7 +77,7 @@ def main():
 
     model.compile(optimizer=opt, loss=loss_type, metrics=[PSNR])
 
-    train_generator = TrainGenerator(image_dir, batch_size=batch_size, image_size=image_size)
+    train_generator = TrainGenerator(train_dir, batch_size=batch_size, image_size=image_size)
     test_generator = TestGenerator(test_dir)
 
     output_path.mkdir(parents=True, exist_ok=True)

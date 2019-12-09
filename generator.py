@@ -11,8 +11,8 @@ train_generator = ImageDataGenerator
 class TrainGenerator(Sequence):
     def __init__(self, image_dir, batch_size=4, image_size=512):
         image_suffixes = (".jpeg", ".jpg", ".png", ".bmp")
-        self.src_image_paths = [p for p in sorted(Path(image_dir + "src").glob("**/*")) if p.suffix.lower() in image_suffixes]
-        self.trg_image_paths = [p for p in sorted(Path(image_dir + "trg").glob("**/*")) if p.suffix.lower() in image_suffixes]
+        self.src_image_paths = [p for p in sorted(Path(image_dir + "/src").glob("**/*")) if p.suffix.lower() in image_suffixes]
+        self.trg_image_paths = [p for p in sorted(Path(image_dir + "/trg").glob("**/*")) if p.suffix.lower() in image_suffixes]
         self.image_num = len(self.src_image_paths)
         self.batch_size = batch_size
         self.image_size = image_size
@@ -49,8 +49,8 @@ class TrainGenerator(Sequence):
 class TestGenerator(Sequence):
     def __init__(self, image_dir):
         image_suffixes = (".jpeg", ".jpg", ".png", ".bmp")
-        src_image_paths = [p for p in sorted(Path(image_dir + "src").glob("**/*")) if p.suffix.lower() in image_suffixes]
-        trg_image_paths = [p for p in sorted(Path(image_dir + "trg").glob("**/*")) if p.suffix.lower() in image_suffixes]
+        src_image_paths = [p for p in sorted(Path(image_dir + "/src").glob("**/*")) if p.suffix.lower() in image_suffixes]
+        trg_image_paths = [p for p in sorted(Path(image_dir + "/trg").glob("**/*")) if p.suffix.lower() in image_suffixes]
         self.image_num = len(src_image_paths)
         self.data = []
 
